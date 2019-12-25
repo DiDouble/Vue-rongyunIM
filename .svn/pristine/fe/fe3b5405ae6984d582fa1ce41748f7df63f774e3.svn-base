@@ -1,0 +1,667 @@
+<template>
+	<div class="spe_container">
+		<!--专家看到的列表-->
+		<div class="spe_items" v-if='isCustomer == 0'>
+		   <div class="spe_item customer_list" v-for='(item,index) in speList' :key='index' @click='toChatPage(item.phone)'>
+		    <div class="spe_top">
+		     <div class="spe_info">
+		      <span class="info_count fmM" v-if='item.unReadCount'>{{item.unReadCount>99?'99+':item.unReadCount}}</span>
+		      <img :src="item.head" alt="">
+		      <div class="yg">
+		       <div class="info_t">
+		        <h3 class="fmM">{{item.name}}</h3>
+		        <button class="onLine" v-if='item.isOnLine == 1'>在线</button>
+		       </div>
+		       <p>{{item.last.type=='1'?changeBase64Totext(item.last.txt):'[图片]'}}</p>
+		      </div>
+		     </div>
+		    </div>
+		    <span class="cus_msg_time">{{item.last.date | updateTimeShow(item.last.date)}}</span>
+		   </div>
+		   <div class='noData' v-show='showNoDate'>
+		    <img src="@/assets/noContact.png">
+		    <p>暂无联系人</p>
+		   </div>
+		</div>
+
+		<!--客户看到的列表-->
+		<van-tabs v-model="active" sticky line-width='24' line-height='4' color='#7AC3FF' title-active-color='#000000' title-inactive-color='#767676' swipeable v-if='isCustomer == 1' animated>
+		  <van-tab title="保险咨询">
+		  	<div class="spe_items">
+				<div class="spe_item zhuanjia_list" v-for='(item,index) in speList' :key='index' v-if="item.type == 1">
+					<div class="zhuanjia_content">
+						<div class="spe_top">
+							<div class="spe_info">
+								<img :src="item.head" alt="">
+								<div class="info_text">
+									<h3 class="fmM">{{item.name}}</h3>
+									<button class="onLine" v-if='item.isOnLine == 1'>在线</button>
+								</div>
+							</div>
+						</div>
+						<div class="spe_instruc" :class="[item.showInstruc?'':'overf2Line']">
+							{{item.info}}
+							<i v-if="item.info.length>40" :class="[item.showInstruc?'trans180':'']" @click='item.showInstruc=!item.showInstruc'></i>
+						</div>
+
+						<div class="last_news" v-if="item.last" v-show='count[item.phone]!=0' @click='toChatPage(item.phone)'>
+							<div class="news_top">
+								<h3 class="fmM">新回复</h3>
+								<span>{{item.last.date | updateTimeShow(item.last.date)}}</span>
+							</div>
+							<p class="spe_last_msg">{{item.last.type=='1'?changeBase64Totext(item.last.txt):'[图片]'}}</p>
+						</div>
+						
+					</div>
+					<div class="spe_options">
+						<div class="zixun" @click='toChatPage(item.phone)'>
+							<img src="https://img.baoxianxia.com.cn/spe_msg.png">
+							<p>在线咨询</p>
+						</div>
+						<div class="tel_phone">
+							<a :href='"tel:"+item.phone'>
+								<img src="https://img.baoxianxia.com.cn/spe_phone.png">
+								<p>电话咨询</p>
+							</a>
+						</div>
+					</div>
+				</div>
+			</div>
+			
+		  </van-tab>
+		  <van-tab title="系统咨询">
+		  	<div class="spe_items sys_lists">
+				<div class="spe_item zhuanjia_list" v-for='(item,index) in speList' :key='index' v-if="item.type == 2">
+					<div class="zhuanjia_content">
+						<div class="spe_top">
+							<div class="spe_info">
+								<img :src="item.head" alt="">
+								<div class="info_text">
+									<h3 class="fmM">{{item.name}}</h3>
+									<button class="onLine" v-if='item.isOnLine == 1'>在线</button>
+								</div>
+							</div>
+						</div>
+						<div class="spe_instruc" :class="[item.showInstruc?'':'overf2Line']">
+							{{item.info}}
+							<i v-if="item.info.length>40" :class="[item.showInstruc?'trans180':'']" @click='item.showInstruc=!item.showInstruc'></i>
+						</div>
+
+						<div class="last_news" v-if="item.last" v-show='count[item.phone]!=0' @click='toChatPage(item.phone)'>
+							<div class="news_top">
+								<h3 class="fmM">新回复</h3>
+								<span>{{item.last.date | updateTimeShow(item.last.date)}}</span>
+							</div>
+							<p class="spe_last_msg">{{item.last.type=='1'?changeBase64Totext(item.last.txt):'[图片]'}}</p>
+						</div>
+						
+					</div>
+					<div class="spe_options">
+						<div class="zixun" @click='toChatPage(item.phone)'>
+							<img src="https://img.baoxianxia.com.cn/spe_msg.png">
+							<p>在线咨询</p>
+						</div>
+						<div class="tel_phone">
+							<a :href='"tel:"+item.phone'>
+								<img src="https://img.baoxianxia.com.cn/spe_phone.png">
+								<p>联系专家</p>
+							</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		  </van-tab>
+		</van-tabs>
+		
+		<van-overlay :show="show" @click="show = false">
+		  <div class="wrapper" @click.stop>
+		  	<van-loading size="36px" color='#5DB0F4' vertical>数据加载中...</van-loading>
+		  </div>
+		</van-overlay>
+	</div>
+</template>
+
+<script>
+	import { getSpeListsRequest , getLoginUser } from '@/util/axiosRequest'
+	import { mapState} from 'vuex'
+	export default{
+		data(){
+			return {
+				active:0,
+				hasSpeMsg:false,//是否有专家消息
+				hasSysMsg:false,//是否有系统消息
+				speList:[],//获取聊天列表
+				showNoDate:false,//是否展示空数据样式
+				timer1:null,
+				timer2:null,//超时函数，便于清除，以免影响性能
+				userPhone:localStorage.getItem('uPhone').replace(/\"/g,""),//当前登录人电话号码
+				isCustomer:'',//判断当前登录人的身份（0：专家， 1：客户）
+				show:true, //是否展示页面loading,
+				countInit:false //设置一个是否为初始化时对count的操作，方便监听answer的变化，false为是,true为false
+			}
+		},
+		created(){
+			//获取当前登录人身份
+			getLoginUser({loginPhone:this.userPhone}).then(res => {
+				this.isCustomer = res.data.result.isCustomer;
+				if(this.isCustomer == 0){
+					document.title = "客户咨询"
+				}
+				this.getSpeLists();//获取相应身份的聊天列表
+			})
+		},
+		computed: {
+			...mapState({
+				count: "count",
+				answer: "answer"
+			})
+		},
+		watch:{
+			count(newVal,oldVal){
+				localStorage.setItem('count',JSON.stringify(newVal));//存储本地count，作为实时监听的显示，配合后台的初始化count
+			},
+			answer(newVal,oldVal) {//监听消息的变化(列表实时更新新的消息提示)
+				if(this.countInit){
+					let lastAnswer = newVal[newVal.length-1]
+					let arrPhone = [];//当前消息的数组
+					this.speList.map((item,index) => {
+						arrPhone.push(item.phone);
+						//判断最后一条消息的归属，然后把相应的发送人置顶
+						if((this.count[lastAnswer.sender]!=0) && (item.phone == lastAnswer.sender)){
+							let thisList = this.speList.splice(index, 1)[0];
+							this.speList.unshift(thisList)
+							//判断如果当前是客户列表，展示最后一条消息
+							item.last.type = lastAnswer.type;
+							item.last.txt = lastAnswer.txt;
+							item.unReadCount = parseInt(item.unReadCount)+1;
+							if(this.isCustomer == 1){
+								if(item.type == 2){
+									document.getElementsByClassName('van-ellipsis')[1].className += ' msgDot';
+								}else{
+									document.getElementsByClassName('van-ellipsis')[0].className += ' msgDot';
+								}
+							}
+							
+						}
+					})
+					if((this.isCustomer==0) && (arrPhone.indexOf(lastAnswer.sender) == -1)){
+						this.getSpeLists();//获取新增客户的聊天列表
+					}
+				}
+				// if(this.speList.length == 0){
+				// 	this.getSpeLists();//获取相应身份的聊天列表
+				// }
+			},
+			active(newVal,oldVal){
+				// this.speList.length = 0;
+				// this.show = true;
+				// if(newVal == 1){
+				// 	this.getSpeLists(2)
+				// }else{
+				// 	this.getSpeLists()
+				// }
+			}
+		},
+		methods:{
+			getSpeLists(exType){//获取聊天列表方法
+				let _that = this;
+				getSpeListsRequest({loginPhone:_that.userPhone}).then(res => {
+					if(res.data.result.length == 0){//设置空白数据的展示样式
+						_that.showNoDate = true;
+						document.body.style.backgroundColor ='#fff';
+						document.body.style.height = '100%';
+						document.body.style.width = '100%';
+					}else{
+						_that.showNoDate = false;
+						document.body.style.backgroundColor ='#f5f5f5';
+						document.body.style.height = 'initial';
+						document.body.style.width = 'initial';
+					}
+					res.data.result.map((item,index) => {
+						//添加展示更多标识
+						item.showInstruc = false;
+
+						//初始化未读消息及个数，存入到vuex中
+					    let __VALUE__ = JSON.parse(JSON.stringify(_that.$store.state.count))
+					  	__VALUE__[item.phone] = item.unReadCount
+					  	_that.$store.state.count = __VALUE__;
+
+						//(列表实时更新新的消息提示)
+						this.timer1 = setTimeout(() => {
+							if(_that.count[item.phone]!=0){
+								let thisList = res.data.result.splice(index, 1)[0];
+								res.data.result.unshift(thisList);//将新发消息的发送者置顶
+							}
+						},150)
+						if(this.isCustomer == 1){
+							if(!_that.countInit && (item.last.txt) && (_that.count[item.phone]!=0)){
+								if(item.type==2){
+									document.getElementsByClassName('van-ellipsis')[1].className += ' msgDot';
+								}else{
+									document.getElementsByClassName('van-ellipsis')[0].className += ' msgDot';
+								}	
+							}
+						}
+
+					})
+					//设置超时函数添加列表数据
+					this.timer2 = setTimeout(() => {
+						_that.speList = res.data.result;
+						this.countInit = true;
+						this.show = false;//隐藏页面loading
+					},150)
+				})
+			},
+			toChatPage(phone){//跳转至聊天室
+				this.$router.push({name:'chat',params:{loginPhone:this.$route.params.loginPhone,targetPhone:phone}});
+			},
+			changeBase64Totext(text){//将消息进行base64解密,并将emoji文字转位图像
+				let Base64 = require('js-base64').Base64;
+				return RongIMLib.RongIMEmoji.symbolToEmoji(Base64.decode(text));
+			}
+		},
+		destroyed(){// 清除定时器
+		  clearInterval(this.timer1);
+		  clearInterval(this.timer2);
+		  this.timer1 = null;
+		  this.timer2 = null;
+		}
+	}
+	
+</script>
+
+<style scoped lang="less">
+	.spe_item{
+		background-color: #fff;
+		margin-bottom: 10px;
+		display: flex;
+		flex-direction: column;
+		padding: 40px 34px 0px 30px;
+		.spe_top{
+			display: flex;
+			justify-content: space-between;
+			width: 100%;
+			.spe_info{
+				display: flex;
+				img{
+					height: 100px;
+					width: 100px;
+					margin-right: 20px;
+					-webkit-border-radius: 50%;
+		            -moz-border-radius: 50%;
+		            border-radius: 50%;
+				}
+				.info_text{
+					height: 60px;
+					display: flex;
+					align-items: center;
+					flex-direction: row;
+					margin-bottom: 4px;
+					h3{
+						font-size:34px;
+						color: #030303;
+					}
+					button{
+						width: 72px;
+						font-size:22px;
+						height: 32px;
+						line-height:32px;
+						margin-left: 10px;
+						display: inline-block;
+						-webkit-border-radius: 8px;
+			            -moz-border-radius: 8px;
+			            border-radius: 8px;
+					}
+					.onLine{
+						color:#55D140;
+						border: 2px solid #55D140;
+					}
+				}
+				.info_count{
+					position: absolute;
+					height: 28px;
+					padding: 0 8px;
+					left: 102px;
+					top: 26px;
+					background:#FF0036;
+					color: #fff;
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					font-size:22px;	
+					-webkit-border-radius: 14px;
+		            -moz-border-radius: 14px;
+		            border-radius: 14px;		
+				}
+			}
+			.spe_concat{
+				display: flex;
+				img{
+					height: 104px;
+				}
+				img:active,img:link{
+					background-color: #f7f7f7;
+				}
+				.hasMsg{
+					position: relative;
+				}
+				.hasMsg:after{
+					content:'';
+					position: absolute;
+					height: 20px;
+					width:20px;
+					right: 16px;
+					top:8px;
+					background-color: #FF0036;
+					-webkit-border-radius: 10px;
+		            -moz-border-radius: 10px;
+		            border-radius: 10px;
+				}
+				div:first-child{
+					margin-right: 8px;
+				}
+			}
+		}
+		.spe_instruc{
+			padding-right: 28px;
+			font-size: 28px;
+			line-height:42px;
+			color: #4A4A4A;
+			padding-left: 120px;
+			margin-top: -30px;
+			position: relative;
+			margin-bottom:24px;
+			//https://img.baoxianxia.com.cn/errorDown.png
+			i{
+				display: inline-block;
+				position: absolute;
+				right: 0px;
+				bottom: 10px;
+				height: 16px;
+				width: 24px;
+				background-image: url(https://img.baoxianxia.com.cn/errorDown.png);
+				background-repeat: no-repeat;
+				background-size: contain;
+				background-position: center;
+			}
+		}
+		.overf2Line{
+			text-overflow: -o-ellipsis-lastline;  
+			overflow: hidden;  
+			text-overflow: ellipsis;  
+			display: -webkit-box;  
+			-webkit-line-clamp: 2;  //行数
+			-webkit-box-orient: vertical;
+		}
+	}
+
+	.spe_item:last-child{
+		margin-bottom: 0px;
+	}
+	.zhuanjia_list{
+		padding-left: 0;
+		padding-right: 0;
+		.zhuanjia_content{
+			padding: 0 30px;
+		}
+	}
+	.zhuanjia_list:first-child{
+		margin-top: 10px;
+	}
+	
+	.fillBot{
+		height: 146px;
+		width: 100%;
+		background-color: #fff;
+	}
+	.oneToOne{
+		position: fixed;
+		border: none;
+		width: 82.6%;
+		left: 8.7%;
+		bottom:50px;
+		font-size:36px;
+		height: 96px;
+		background:rgba(93,176,244,1);
+		-webkit-border-radius: 48px;
+        -moz-border-radius: 48px;
+        border-radius: 48px;
+        -webkit-box-shadow: 0px 4px 12px 0px rgba(151,208,255,0.7);
+        -moz-box-shadow: 0px 4px 12px 0px rgba(151,208,255,0.7);
+        box-shadow: 0px 4px 12px 0px rgba(151,208,255,0.7);
+	}
+	.noData{
+		width: 270px;
+		position: absolute;
+		top: 25%;
+		left: 50%;
+		margin-left: -135px;
+		img{
+			width: 270px;
+			margin-bottom: 30px;
+		}
+		p{
+			line-height:52px;
+			text-align:center;
+			font-size:38px;
+			color: #C4D5E1;
+		}
+	}
+	.yg{
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		.info_t{
+			display: flex;
+			align-items: center;
+			margin-bottom: 8px;
+		}
+		h3{
+			line-height: 48px;
+			font-size:34px;
+			margin-right: 10px;
+			color: #030303;
+		}
+		button{
+			width: 72px;
+			font-size:22px;
+			height: 32px;
+			line-height:32px;
+			display: inline-block;
+			-webkit-border-radius: 8px;
+            -moz-border-radius: 8px;
+            border-radius: 8px;
+		}
+		.onLine{
+			color:#55D140;
+			border: 2px solid #55D140;
+		}
+		p{
+			line-height:36px;
+			font-size: 26px;
+			color: #AAAAAA;
+			width: 280px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+	}
+
+	.wrapper {
+	  display: flex;
+	  align-items: center;
+	  justify-content: center;
+	  height: 100%;
+	}
+
+	.block {
+	  width: 120px;
+	  height: 120px;
+	  background-color: #fff;
+	}
+
+	.sys_lists{
+		height: 1050px;
+	}
+
+	/deep/ .van-tabs--line .van-tabs__wrap{
+		height: 48px;
+		.van-tab{
+			line-height: 48px;
+			font-size: 16px;
+		}
+	}
+	.trans180{
+		-webkit-transform: rotate(180deg);
+        -moz-transform: rotate(180deg);
+        -ms-transform: rotate(180deg);
+        -o-transform: rotate(180deg);
+        transform: rotate(180deg);
+	}
+
+	.last_news{
+		width: 566px;
+		padding:14px 32px 14px 20px;
+		border: 2px solid #E2E2E2;
+		margin-left: 120px;
+		margin-bottom:32px;
+	}
+	.news_top{
+		height: 34px;
+		line-height:34px;
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 6px;
+		h3{
+			color: #F0001D;
+			font-size: 24px;
+			padding-left: 18px;
+			line-height:34px;
+			height: 34px;
+			position: relative;
+			&:before{
+				content: "";
+				position: absolute;
+				left: 0;
+				width: 4px;
+				height: 24px;
+				top: 4px;
+				background:#F0001D;
+			}
+		}
+	}
+	.spe_last_msg{
+		font-size: 24px;
+		line-height:32px;
+		color: #666666;
+		padding-left: 18px;
+		text-overflow: -o-ellipsis-lastline;  
+		overflow: hidden;  
+		text-overflow: ellipsis;  
+		display: -webkit-box;  
+		-webkit-line-clamp: 2;  //行数
+		-webkit-box-orient: vertical;
+	}
+	.spe_options{
+		height: 96px;
+		display: flex;
+		position: relative;
+		-webkit-box-shadow: 0px -2px 0px 0px rgba(0,0,0,0.06);
+        -moz-box-shadow: 0px -2px 0px 0px rgba(0,0,0,0.06);
+        box-shadow: 0px -2px 0px 0px rgba(0,0,0,0.06);
+		div{
+			display: flex;
+			flex:1;
+			justify-content: center;
+			align-items: center;
+			font-size:28px;
+			img{
+				height: 40px;
+				width: 40px;
+				margin-right:30px;
+			}
+		}
+		.zixun{
+			position: relative;
+			&:after{
+				content: "";
+				position: absolute;
+				right: 0;
+				height: 62px;
+				width: 1px;
+				top: 18px;
+				background:#E2E2E2;
+			}
+		}
+		// &:before{
+		// 	content:"";
+		// 	position: absolute;
+		// 	height: 2px;
+		// 	top: 0;
+		// 	left: -30px;
+		// 	right: -30px;
+		// 	background:#E2E2E2;
+		// }
+		
+	}
+	.tel_phone{
+		a{
+			display: flex;
+		}
+	}
+	.customer_list{
+		padding: 30px 40px;
+		position: relative;
+		margin-bottom: 0;
+		&:after{
+			content: "";
+			position: absolute;
+			bottom: 0;
+			left: 40px;
+			right: 0;
+			height: 1px;
+			background:#EAEAEA;
+		}
+		.cus_msg_time{
+			position: absolute;
+			right: 40px;
+			top: 40px;
+			font-size: 22px;
+			color: #9092A5;
+		}
+		.yg p{
+			color: #666;
+			font-size:26px;
+		}
+		.info_t{
+			margin-top: 4px;
+		}
+
+	}
+
+	.van-overlay{
+		z-index: 9999;
+	}
+
+	.van-swipe-cell__right .van-button--danger{
+		height: 100%;
+	}
+	/deep/ .msgDot{
+		position: relative;
+	}
+	/deep/ .msgDot:after{
+		content: "";
+		position: absolute;
+		display: flex;
+		height: 12px;
+		width: 12px;
+		top: 20px;
+		right: 110px;
+		-webkit-border-radius: 50%;
+    	-moz-border-radius: 50%;
+    	border-radius: 50%;
+    	background:#F0001D;
+    	z-index: 200;
+	}
+
+</style>

@@ -1,0 +1,388 @@
+<template>
+	<div>
+		<div class="homeIm" id='homeIm' :class="[showEmoji?'emojiShow':'']">
+			<home-news v-for="(item ,index) in answer" :key='index' :item='item' :data='item' :targetPortrait='targetPortrait' :userPortrait='userPortrait'></home-news>
+			<div v-show='showImgLoading'>
+				<div class="colora1 fz12 lh40 pt10" style="height: 1.06667rem;opacity: 0;">时间</div>
+				<div class="flex pl20 pr20 borBox juste">
+					<div class="frame-right frame-image borRad lh24 fz16 tl color3 pl10 pr10 pt5 pb5 borBox w250 mr15 posRel">
+						<van-loading type="spinner" color="#1989fa" />
+					</div>
+					<img :src="userPortrait" class="head borRad">
+				</div>
+			</div>
+		</div>
+		<div class="posFix bottom0 left0 justsa w100 bgf" :class="[showEmoji?'emojiShowPosFixH':'']">
+			<div class="option_co">
+				<van-field
+				    v-model="say"
+				    type="textarea"
+				    rows="1"
+				    :autosize='autosize'
+				    placeholder="请输入"
+				    class='input_panle'
+				  />
+				<div class="option_btn">
+					<div :class="[showEmoji?'img_keybord':'moje_co']" @click='showEmoji = !showEmoji'></div>
+					<van-button type="default" class='send_btn' @click="send()" v-show='say?true:false'>发送</van-button>
+					<div class="img_file" v-show='say?false:true'>
+						<input id="uploadFile" type="file" class="upload_input" @change="uploadFileChange($event)" accept="image/*"/>
+					</div>
+				</div>
+			</div>
+			<van-swipe :height='180' :loop='false' v-show='showEmoji'>
+			  <van-swipe-item v-for="item in emojiLists">
+			  	<span class="emoji_item" v-for='(value,index) in item' :key='index' @click='putEmoji(value.emoji)'>{{value.emoji}}</span>
+			  </van-swipe-item>
+			</van-swipe>
+		</div>
+	</div>
+</template>
+<script>
+	import axios from "axios";
+	import { mapState, mapGetters, mapActions, mapMutations } from 'vuex'
+	import HomeNews from '@/components/homeNews.vue' //自定义组件 ------重要
+	import { getTimeStringAutoShort } from '@/util/chatTime.js'
+	import { getUserInfoRequest , getHistory , addHistory , getLoginUser , resetUnread , sendMsg } from '@/util/axiosRequest'
+ 	
+	export default {
+		data() {
+			return {
+				say: '',//输入框实时输入的值
+				autosize:{maxHeight:80},//设置输入框的最高高度
+				showEmoji:false,//是否展示emoji
+				emojiLists:[],//emoji列表数据
+				fileType:RongIMLib.FileType.IMAGE, // 融云图片类型
+				showImgLoading:false,//是否展示图片loading
+				targetPhone:this.$route.params.targetPhone,//目标id(手机号)
+				userPhone:this.$route.params.loginPhone,//当前登录人id(手机号)
+				targetPortrait:'',//目标头像
+				userPortrait:'',//当前登录人头像
+				timer:null,
+				time1:null,
+				initHis:false //设置一个是否为初始化时对answer的操作，方便监听answer的变化，false为是,true为false
+			}
+		},
+		props: {
+			msg: String
+		},
+		components:{
+			HomeNews
+		},
+		created() {
+			this.getChatRecord() //获取聊天记录
+			//专家头像获取
+			getUserInfoRequest({openid:this.targetPhone}).then(res => {
+				this.targetPortrait = res.data.userPortrait
+				document.title = res.data.userName;
+			})
+			//用户头像获取
+			getUserInfoRequest({phone:this.userPhone}).then(res => {
+				this.userPortrait = res.data.userPortrait
+			})
+			//重置未读消息
+			this.clearWdMsg();
+		},
+		computed: {
+			...mapState({
+				answer: "answer",
+			})
+		},
+		watch: { 
+			answer(newVal,oldVal) {//有消息就滚动到底部
+				//判断是新消息的进入，而不是初始化对answer的操作	
+				if(this.initHis){
+					//判断如果是收到的消息重置消息记录
+					if(newVal.length != 0){
+						if(newVal[newVal.length-1].sender != this.userPhone){
+							this.clearWdMsg();
+						}
+					}
+				}
+				//页面滚动条到底部
+				this.$nextTick(() => {
+					var ele = document.getElementById('homeIm');
+					ele.scrollTop = parseInt(ele.scrollHeight)+100;
+					//如不行，请尝试-> list.scrollTop = list.scrollHeight
+				})
+			},
+			showEmoji(newVal,oldVal){
+				if(newVal){
+					if(this.emojiLists.length == 0){//对emoji数据进行分页
+						for(var i=0;i<RongIMLib.RongIMEmoji.list.length;i+=60){
+						    this.emojiLists.push(RongIMLib.RongIMEmoji.list.slice(i,i+60));
+						}
+					}
+					this.$nextTick(() => { 
+						//emoji弹框弹出就滚动到底部
+						var ele = document.getElementById('homeIm');
+						ele.scrollTop = ele.scrollHeight;
+					})
+				}
+			}
+		},
+		methods: {
+			send(isImg) {
+				let that = this,
+					Base64 = require('js-base64').Base64;
+				//设置文本消息和图片消息，作为本地存储，向answer中推，然后进行页面的展示
+				if(isImg) {
+					var say = {
+				    	sender:that.userPhone,
+						type: 4,
+						css:'right',
+						img: isImg,
+						// date:isImg.split('?time=')[1],
+					};
+				}else {
+					var say = {
+						sender:that.userPhone,
+						type: 1,
+						css:'right',
+						txt: Base64.encode(that.say),//将文本消息进行base64加密
+						// date:''
+					};
+					//当前为文本消息，点击发送按钮，输入框获取焦点，防止点击发送之后软键盘收回
+					if(!that.showEmoji){
+						document.getElementsByClassName('van-field__control')[0].focus();
+					}
+				}
+				//发送消息接口
+				sendMsg({reciverOpenid:that.targetPhone,senderPhone:that.userPhone,img:isImg,text:Base64.encode(that.say),type:say.type}).then(res => {
+					if(res.data.code == '0000'){
+						that.say = '';
+						if((res.data.result-that.$store.state.lastHistoryTime) > 5*60*1000){
+							that.$store.state.lastHistoryTime = res.data.result;
+							say.date = res.data.result;
+						}else{
+							say.date = '';
+						}
+						that.$store.state.answer.push(say);
+
+						that.$nextTick(() => { 
+							//emoji弹框弹出就滚动到底部
+							var ele = document.getElementById('homeIm');
+							ele.scrollTop = ele.scrollHeight;
+						})
+					}else{
+						that.$toast("服务器异常");
+					}
+				})
+			},
+			getChatRecord() {//获取历史消息
+				var that = this;
+				that.$store.state.answer = [];
+				getHistory({phone1:that.userPhone,openid2:this.targetPhone,loginPhone:that.userPhone}).then(res => {
+					if(res.data.code == '0000'){
+						let length = res.data.result.imRedisHistoryModelList.length;
+						//重置历史消息列表中相应位置的标识
+						that.$store.state.lastHistoryTime = res.data.result.end;
+						res.data.result.imRedisHistoryModelList.map((item,index) => {
+							if(item.sender == that.userPhone){
+								item.css = 'right'
+							}else{
+								item.css = 'left'
+							}
+							that.$store.state.answer.push(item);
+						})
+						that.time1 = setTimeout(() => {
+							that.initHis = true;
+						})
+					}
+					
+				})
+				
+			},
+			putEmoji(value){//将emoji添加到聊天输入框
+				var value = RongIMLib.RongIMEmoji.emojiToSymbol(value);
+				this.say+=value;
+			},
+			uploadConfig(){//上传图片配置
+				const that = this;
+				let config = {
+					domain: 'https://ybx-api.epec.com/sys/uploadPicure',//http://192.168.1.127:9000
+					  fileType: that.fileType,
+					  getToken: function(callback) {
+					    RongIMClient.getInstance().getFileToken(that.fileType, {
+					      onSuccess: function(data){
+					        callback(data.token);
+					      },
+					      onError: function(){
+					        console.error('get file token error', error);
+					      }
+					    });
+					  }
+				}
+				return config;
+			},
+			uploadCallbacks(){//上传图片回调函数
+				let that = this;
+				let uploadCallbacks = {
+				  onProgress: function(loaded, total) {
+				    var percent = Math.floor(loaded / total * 100);
+				  },
+				  onCompleted: function(data) {
+					that.showImgLoading = false;
+					that.send(data.result);
+					document.getElementById('uploadFile').value = "";
+				  },
+				  onError: function(error) {
+				    console.error('上传失败', error);
+				  }
+				}
+				return uploadCallbacks
+			},
+			uploadFileChange(e){
+				let _file = e.target.files[0],that = this; //上传的 file 对象
+				if((_file.size/(1024*1024))>5){
+					this.$toast('图片文件不能大于5M');
+					return;
+				}
+				this.showImgLoading = true;
+				this.$nextTick(() => { 
+					//emoji弹框弹出就滚动到底部
+					var ele = document.getElementById('homeIm');
+					ele.scrollTop = ele.scrollHeight;
+				})
+				UploadClient.initImage(that.uploadConfig(), function(uploadFile) { // 上传文件为: UploadClient.initFile
+				    uploadFile.upload(_file, that.uploadCallbacks());
+				});
+			},
+			clearWdMsg(){
+				resetUnread({phone1:this.userPhone,openid2:this.targetPhone,reciver:this.userPhone}).then(res => {
+					console.log("清除聊天记录成功")
+				})
+			}
+		},
+		destroyed(){
+		  clearInterval(this.timer);　　// 清除定时器
+		  clearInterval(this.timer1);　　// 清除定时器
+		  this.timer = null;
+		  this.time1 = null;
+		}
+	};
+</script>
+<style scoped lang="less">
+	.mike {
+		width: 30px;
+		height: 30px;
+	}
+
+	.input_panle{
+		width: 510px;
+		background: #F7F7F7;
+	}
+	
+	.border {
+		border: 1px solid #ccc;
+	}
+	
+	.button {
+		width: 80px;
+		height: 46px;
+	}
+	
+	.homeIm {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom:108px;
+		overflow-y: scroll;
+		-webkit-overflow-scrolling:touch;
+		padding-bottom: 140px;
+		// padding-bottom: 200px;
+	}
+	.posFix{
+        // min-height:108px;
+        height:108px;
+        padding:18px 30px;
+	}
+	.option_co{
+		width: 100%;
+		display: flex;
+        justify-content: space-between;
+        align-items: center;
+	}
+	/deep/ .van-field__body textarea{
+		width: 100%;
+		background: #f7f7f7;
+		border: none;
+		padding: 6px 10px;
+	}
+	.van-cell{
+		padding: 0
+	}
+	.option_btn{
+		height: 56px;
+		display: flex;
+		width: 156px;
+		justify-content: space-between;
+		align-items: center;
+		.moje_co{
+			background-image: url('https://res-hx-bj.baoxianxia.com.cn/Group%20Copy%202@3x.png');
+		}
+		.img_keybord{
+			background-image: url('https://doc.baoxianxia.com.cn/changeKey.png');
+		}
+		.moje_co,.img_file,.img_keybord{
+			height: 56px;
+			width: 56px;
+			background-repeat: no-repeat;
+			background-size: 100%;
+		}
+		.img_file{
+			overflow:hidden;
+			background-image: url('https://img.baoxianxia.com.cn/Shape@3x.png');
+			.upload_input{
+				height: 56px;
+				width: 56px;
+				opacity: 0;
+			}
+		}
+		.send_btn{
+			height: 62px;
+			line-height: 62px;
+			font-size: 32px;
+			padding: 0 10px;
+			background:#5DB0F4;
+			color: #fff;
+			border: none;
+			outline: none;
+		}
+	}
+	.emoji_item{
+		display: inline-block;
+		height: 57px;
+		width: 57px;
+		font-size: 44px;
+		text-align:center;
+	}
+	.van-swipe-item{
+		padding-top: 10px;
+		padding-bottom: 30px;
+		overflow: hidden;
+	}
+	/deep/ .van-swipe__indicators{
+		bottom:8px;
+		.van-swipe__indicator{
+			background-color:#000;
+		}
+		.van-swipe__indicator--active{
+			background-color: #5DB0F4;
+		}
+	}
+	.emojiShow{
+		// bottom:468px!important;
+		padding-bottom: 400px;
+	}
+	.emojiShowPosFixH{
+		height: 468px!important;
+	}
+
+	.head {
+		width: 72px;
+		height: 72px;
+	}
+
+</style>
